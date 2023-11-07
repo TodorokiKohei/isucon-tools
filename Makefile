@@ -16,6 +16,8 @@ BENCH_DIR:=/home/isucon/bench
 BIN_NAME:=isuports
 SERVICE_NAME:=isuports.service
 
+ALP_MATCH:="/api/player/player/[0-9a-z]+","/api/player/competition/[0-9a-z]+/ranking","/api/organizer/competition/[0-9a-z]+/score","/api/organizer/player/[0-9a-z]+/disqualified","/api/organizer/competition/[0-9a-z]+/finish"
+
 .PHONY: bench
 bench: before build restart 
 	cd $(BENCH_DIR); \
@@ -54,6 +56,16 @@ before:
 .PHONY: pprof
 pprof:
 	go tool pprof -seconds 60 -png -output pprof.png http://localhost:3000/debug/pprof/profile 
+
+.PHONY: alp
+alp:
+	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r | less
+
+.PHONY: alpq
+alpq:
+	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q | less
+
+
 
 .PHONY: setup
 setup:
