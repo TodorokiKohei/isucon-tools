@@ -1,7 +1,9 @@
-NGX_DIR:=/var/log/nginx
-MYSQL_DIR:=/var/log/mysql
-NGX_LOG:="$(NGX_DIR)/access.log"
-MYSQL_LOG="$(MYSQL_DIR)/"
+NGX_LOG_DIR:=/var/log/nginx
+MYSQL_LOG_DIR:=/var/log/mysql
+NGX_LOG:="$(NGX_LOG_DIR)/access.log"
+MYSQL_LOG="$(MYSQL_LOG_DIR)/mysql-slow.log"
+
+SQLITE_LOG=$(BUILD_DIR)/sqlite.log
 
 DB_HOST:=127.0.0.1
 DB_PORT:=3306
@@ -20,6 +22,11 @@ ALP_MATCH:="/api/player/player/[0-9a-z]+","/api/player/competition/[0-9a-z]+/ran
 
 .PHONY: bench
 bench: before build restart 
+	cd $(BENCH_DIR); \
+	./bench -target-addr 127.0.0.1:443
+
+.PHONY: bench-dev
+bench-dev: before slow-on build restart 
 	cd $(BENCH_DIR); \
 	./bench -target-addr 127.0.0.1:443
 
@@ -47,24 +54,42 @@ before:
 	@if [ -f $(NGX_LOG) ]; then \
 		sudo mv -f $(NGX_LOG) ~/logs/$(when)/ ; \
 	fi
-	# @if [ -f $(MYSQL_LOG) ]; then \
-	# 	sudo mv -f $(MYSQL_LOG) ~/logs/$(when)/ ; \
-	# fi
+
+	@if [ -f $(MYSQL_LOG) ]; then \
+		sudo mv -f $(MYSQL_LOG) ~/logs/$(when)/ ; \
+	fi
+
+	@if [ -f $(SQLITE_LOG) ]; then \
+		sudo mv -f $(SQLITE_LOG) ~/logs/$(when)/ ; \
+	fi
+
 	sudo systemctl restart nginx
-	# sudo systemctl restart mysql
+	sudo systemctl restart mysql
 
 .PHONY: pprof
 pprof:
 	go tool pprof -seconds 60 -png -output pprof.png http://localhost:3000/debug/pprof/profile 
 
+
+.PHONY: slow-on
+slow-on:
+	sudo mysql -uroot -proot -e "set global slow_query_log_file = '$(MYSQL_LOG)'; set global long_query_time = 0; set global slow_query_log = ON;"
+
+.PHONY: slow-off
+slow-off:
+	sudo mysql -uroot -proot -e "set global slow_query_log = OFF;"
+
+.PHONY: slow
+slow: 
+	sudo pt-query-digest $(MYSQL_LOG) 
+
 .PHONY: alp
 alp:
-	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r | less
+	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r 
 
 .PHONY: alpq
 alpq:
-	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q | less
-
+	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q 
 
 
 .PHONY: setup
@@ -79,9 +104,23 @@ setup:
 	cp config ~/.ssh/config
 	sudo chown -R isucon:root /etc/nginx
 	sudo chown -R isucon:root /etc/mysql
-	sudo chmod -R 777 $(NGX_DIR)
-	sudo chmod -R 777 $(MYSQL_DIR)
+	sudo chmod -R 777 $(NGX_LOG_DIR)
+	sudo chmod -R 777 $(MYSQL_LOG_DIR)
 	wget https://github.com/tkuchiki/alp/releases/download/v1.0.21/alp_linux_amd64.tar.gz
 	tar -xzvf alp_linux_amd64.tar.gz
 	sudo install alp /usr/local/bin/alp
-	cat ~/.ssh/id_ed25519
+	rm alp alp_linux_amd64.tar.gz
+	sudo apt install percona-toolkit
+	cat ~/.ssh/id_ed25519.pub
+
+
+.PHONY: conf
+conf:
+	cd $(PROJECT_ROOT)/configs; \
+	sudo cp etc/systemd/system/$(SERVICE_NAME) /etc/systemd/system/ ; \
+	sudo cp etc/nginx/nginx.conf /etc/nginx/
+	sudo systemctl daemon-reload 
+
+.PHONY: duckdb
+duckdb:
+	duckdb -c "select statement,avg(query_time) as avg_time, sum(query_time) as sum_time, count(statement) as count from read_json_auto('/home/isucon/webapp/go/sqlite.log') group by statement order by sum_time desc;"
