@@ -18,7 +18,7 @@ BENCH_DIR:=/home/isucon/bench
 BIN_NAME:=isuports
 SERVICE_NAME:=isuports.service
 
-ALP_MATCH:="/api/player/player/[0-9a-z]+","/api/player/competition/[0-9a-z]+/ranking","/api/organizer/competition/[0-9a-z]+/score","/api/organizer/player/[0-9a-z]+/disqualified","/api/organizer/competition/[0-9a-z]+/finish"
+ALP_MATCH:="/api/player/player/[-0-9a-z]+","/api/player/competition/[-0-9a-z]+/ranking","/api/organizer/competition/[-0-9a-z]+/score","/api/organizer/player/[-0-9a-z]+/disqualified","/api/organizer/competition/[-0-9a-z]+/finish"
 
 .PHONY: bench
 bench: before build restart 
@@ -45,7 +45,7 @@ status:
 
 .PHONY: log
 log:
-	sudo journalctl -u $(SERVICE_NAME) -n10 -f
+	sudo journalctl -u $(SERVICE_NAME) -n50 -f
 
 .PHONY: before
 before:
@@ -62,6 +62,7 @@ before:
 	@if [ -f $(SQLITE_LOG) ]; then \
 		sudo mv -f $(SQLITE_LOG) ~/logs/$(when)/ ; \
 	fi
+	mv -f logs/* ~/logs/$(when)
 
 	sudo systemctl restart nginx
 	sudo systemctl restart mysql
@@ -81,15 +82,15 @@ slow-off:
 
 .PHONY: slow
 slow: 
-	sudo pt-query-digest $(MYSQL_LOG) 
+	sudo pt-query-digest $(MYSQL_LOG) | tee logs/slow-query.txt
 
 .PHONY: alp
 alp:
-	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r 
+	sudo alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r | tee logs/alp.txt
 
 .PHONY: alpq
 alpq:
-	alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q 
+	sudo alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q | tee logs/alpq.txt
 
 
 .PHONY: setup
@@ -111,6 +112,7 @@ setup:
 	sudo install alp /usr/local/bin/alp
 	rm alp alp_linux_amd64.tar.gz
 	sudo apt install percona-toolkit
+	mkdir logs
 	cat ~/.ssh/id_ed25519.pub
 
 
@@ -123,4 +125,8 @@ conf:
 
 .PHONY: duckdb
 duckdb:
-	duckdb -c "select statement,avg(query_time) as avg_time, sum(query_time) as sum_time, count(statement) as count from read_json_auto('/home/isucon/webapp/go/sqlite.log') group by statement order by sum_time desc;"
+	duckdb -c "select statement,avg(query_time) as avg_time, sum(query_time) as sum_time, count(statement) as count from read_json_auto('/home/isucon/webapp/go/sqlite.log') group by statement order by sum_time desc;" | tee logs/duckdb.txt
+
+.PHONY: anal
+anal: slow alp duckdb
+
