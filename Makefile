@@ -49,27 +49,30 @@ log:
 
 .PHONY: before
 before:
-	$(eval when := $(shell date "+%s"))
-	mkdir -p ~/logs/$(when)
+	$(eval when := $(shell date "+%Y%m%d-%H%M%S"))
+	mkdir -p logs/$(when)
 	@if [ -f $(NGX_LOG) ]; then \
-		sudo mv -f $(NGX_LOG) ~/logs/$(when)/ ; \
+		sudo mv -f $(NGX_LOG) logs/$(when)/ ; \
 	fi
 
 	@if [ -f $(MYSQL_LOG) ]; then \
-		sudo mv -f $(MYSQL_LOG) ~/logs/$(when)/ ; \
+		sudo mv -f $(MYSQL_LOG) logs/$(when)/ ; \
 	fi
 
 	@if [ -f $(SQLITE_LOG) ]; then \
-		sudo mv -f $(SQLITE_LOG) ~/logs/$(when)/ ; \
+		sudo mv -f $(SQLITE_LOG) logs/$(when)/ ; \
 	fi
-	mv -f logs/* ~/logs/$(when)
+
+	@if ls logs/* 1> /dev/null 2>&1; then \
+		find logs -maxdepth 1 -type f | xargs -I% mv % logs/$(when)/ ; \
+	fi
 
 	sudo systemctl restart nginx
 	sudo systemctl restart mysql
 
 .PHONY: pprof
 pprof:
-	go tool pprof -seconds 60 -png -output pprof.png http://localhost:3000/debug/pprof/profile 
+	go tool pprof -seconds 60 -png -output logs/pprof.png http://localhost:3000/debug/pprof/profile 
 
 
 .PHONY: slow-on
