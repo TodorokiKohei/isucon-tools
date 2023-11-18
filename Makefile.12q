@@ -3,32 +3,37 @@ MYSQL_LOG_DIR:=/var/log/mysql
 NGX_LOG:="$(NGX_LOG_DIR)/access.log"
 MYSQL_LOG="$(MYSQL_LOG_DIR)/mysql-slow.log"
 
+SQLITE_LOG=$(BUILD_DIR)/sqlite.log
+
+DB_HOST:=127.0.0.1
+DB_PORT:=3306
+DB_USER:=isucon
+DB_PASS:=isucon
+DB_NAME:=isuports
 
 PROJECT_ROOT:=/home/isucon/webapp
 BUILD_DIR:=/home/isucon/webapp/go
-BUILD_CMD:=go build -o isucondition main.go
-
 BENCH_DIR:=/home/isucon/bench
-SERVICE_NAME:=isucondition.go.service
-BENCH_CMD:=./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999
 
-# ALP_MATCH:="/api/player/player/[-0-9a-z]+","/api/player/competition/[-0-9a-z]+/ranking","/api/organizer/competition/[-0-9a-z]+/score","/api/organizer/player/[-0-9a-z]+/disqualified","/api/organizer/competition/[-0-9a-z]+/finish"
-ALP_MATCH:="/api/condition/[-0-9a-z]+","/api/isu/[-0-9a-z]+","/api/isu/[-0-9a-z]+/icon","/isu/[-0-9a-z]+","/isu/[-0-9a-z]+/graph","/isu/[-0-9a-z]+/condition"
+BIN_NAME:=isuports
+SERVICE_NAME:=isuports.service
+
+ALP_MATCH:="/api/player/player/[-0-9a-z]+","/api/player/competition/[-0-9a-z]+/ranking","/api/organizer/competition/[-0-9a-z]+/score","/api/organizer/player/[-0-9a-z]+/disqualified","/api/organizer/competition/[-0-9a-z]+/finish"
 
 .PHONY: bench
 bench: before build restart 
 	cd $(BENCH_DIR); \
-	$(BENCH_CMD)
+	./bench -target-addr 127.0.0.1:443
 
 .PHONY: bench-dev
 bench-dev: before slow-on build restart 
 	cd $(BENCH_DIR); \
-	$(BENCH_CMD)
+	./bench -target-addr 127.0.0.1:443
 
 .PHONY: build
 build:
 	cd $(BUILD_DIR); \
-	$(BUILD_CMD)
+	make isuports
 
 .PHONY: restart
 restart:
@@ -52,6 +57,10 @@ before:
 
 	@if [ -f $(MYSQL_LOG) ]; then \
 		sudo mv -f $(MYSQL_LOG) logs/$(when)/ ; \
+	fi
+
+	@if [ -f $(SQLITE_LOG) ]; then \
+		sudo mv -f $(SQLITE_LOG) logs/$(when)/ ; \
 	fi
 
 	@if ls logs/*.txt 1> /dev/null 2>&1; then \
@@ -107,7 +116,7 @@ setup:
 	tar -xzvf alp_linux_amd64.tar.gz
 	sudo install alp /usr/local/bin/alp
 	rm alp alp_linux_amd64.tar.gz
-	sudo apt install percona-toolkit -y
+	sudo apt install percona-toolkit
 	mkdir logs
 	cat ~/.ssh/id_ed25519.pub
 
@@ -119,6 +128,10 @@ conf:
 	sudo cp etc/nginx/nginx.conf /etc/nginx/
 	sudo systemctl daemon-reload 
 
+.PHONY: duckdb
+duckdb:
+	duckdb -c "select statement,avg(query_time) as avg_time, sum(query_time) as sum_time, count(statement) as count from read_json_auto('/home/isucon/webapp/go/sqlite.log') group by statement order by sum_time desc;" | tee logs/duckdb.txt
+
 .PHONY: anal
-anal: slow alp 
+anal: slow alp duckdb
 
