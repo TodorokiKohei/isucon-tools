@@ -63,8 +63,10 @@ before:
 		sudo mv -f $(SQLITE_LOG) logs/$(when)/ ; \
 	fi
 
-	@if ls logs/* 1> /dev/null 2>&1; then \
+	@if ls logs/*.txt 1> /dev/null 2>&1; then \
 		find logs -maxdepth 1 -type f | xargs -I% mv % logs/$(when)/ ; \
+	else \
+		rm -rf logs/$(when) ; \
 	fi
 
 	sudo systemctl restart nginx
@@ -89,11 +91,11 @@ slow:
 
 .PHONY: alp
 alp:
-	sudo alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r | tee logs/alp.txt
+	sudo alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r --sort sum | tee logs/alp.txt
 
 .PHONY: alpq
 alpq:
-	sudo alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q | tee logs/alpq.txt
+	sudo alp json --file $(NGX_LOG) -m $(ALP_MATCH) -r -q --sort sum | tee logs/alpq.txt
 
 
 .PHONY: setup
