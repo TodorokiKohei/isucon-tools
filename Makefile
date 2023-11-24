@@ -1,3 +1,5 @@
+SHELL=/bin/bash
+
 NGX_LOG_DIR:=/var/log/nginx
 MYSQL_LOG_DIR:=/var/log/mysql
 NGX_LOG:="$(NGX_LOG_DIR)/access.log"
@@ -13,17 +15,19 @@ SERVICE_NAME:=isucondition.go.service
 BENCH_CMD:=./bench -all-addresses 127.0.0.11 -target 127.0.0.11:443 -tls -jia-service-url http://127.0.0.1:4999
 
 # ALP_MATCH:="/api/player/player/[-0-9a-z]+","/api/player/competition/[-0-9a-z]+/ranking","/api/organizer/competition/[-0-9a-z]+/score","/api/organizer/player/[-0-9a-z]+/disqualified","/api/organizer/competition/[-0-9a-z]+/finish"
-ALP_MATCH:="/api/condition/[-0-9a-z]+","/api/isu/[-0-9a-z]+","/api/isu/[-0-9a-z]+/icon","/isu/[-0-9a-z]+","/isu/[-0-9a-z]+/graph","/isu/[-0-9a-z]+/condition"
+ALP_MATCH:="/api/condition/[-0-9a-z]+","/api/isu/[-0-9a-z]+/icon","/api/isu/[-0-9a-z]+/graph","/api/isu/[-0-9a-z]+","/isu/[-0-9a-z]+/graph","/isu/[-0-9a-z]+/condition","/isu/[-0-9a-z]+"
 
 .PHONY: bench
 bench: before build restart 
+	$(eval cw := $(shell pwd))
 	cd $(BENCH_DIR); \
-	$(BENCH_CMD)
+	$(BENCH_CMD) | tee $(cw)/logs/bench_log.txt
 
 .PHONY: bench-dev
 bench-dev: before slow-on build restart 
+	$(eval cw := $(shell pwd))
 	cd $(BENCH_DIR); \
-	$(BENCH_CMD)
+	$(BENCH_CMD) | tee $(cw)/logs/bench_log.txt
 
 .PHONY: build
 build:
@@ -54,10 +58,11 @@ before:
 		sudo mv -f $(MYSQL_LOG) logs/$(when)/ ; \
 	fi
 
-	@if ls logs/*.txt 1> /dev/null 2>&1; then \
-		find logs -maxdepth 1 -type f | xargs -I% mv % logs/$(when)/ ; \
-	else \
+	@$(eval FILE_COUNT=$(shell find logs -maxdepth 1 -name "*.txt" | wc -l))
+	@if [ $(FILE_COUNT) -le 1 ]; then \
 		rm -rf logs/$(when) ; \
+	else \
+		find logs -maxdepth 1 -type f | xargs -I% mv % logs/$(when)/ ; \
 	fi
 
 	sudo systemctl restart nginx
